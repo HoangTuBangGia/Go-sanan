@@ -3,6 +3,7 @@ package main
 import (
 	"gin-database-connect/controllers"
 	"gin-database-connect/initializers"
+	"gin-database-connect/middleware"
 	"os"
 
 	"github.com/gin-gonic/gin"
@@ -18,13 +19,29 @@ func main() {
 
 	v1 := r.Group("/api/v1")
 	{
-		users := v1.Group("/users")
+		auth := v1.Group("/auth")
+		{
+			auth.POST("/register", controllers.Register)
+			auth.POST("/login", controllers.Login)
+			auth.POST("/refresh", controllers.Refresh)
+			auth.POST("/logout", controllers.Logout)
+			auth.POST("/logoutall", controllers.LogoutAllDevices)
+		}
 
-		users.POST("", controllers.UserCreate)
-		users.GET("", controllers.UserList)
-		users.GET("/:id", controllers.UserGet)
-		users.PUT("/:id", controllers.UserUpdate)
-		users.DELETE("/:id", controllers.UserDelete)
+		protected := v1.Group("/")
+		protected.Use(middleware.AuthMiddleware())
+		{
+			protected.GET("/profile", controllers.GetProfile)
+
+			users := protected.Group("/users")
+			{
+				users.POST("", middleware.AdminMiddleware(), controllers.UserCreate)
+				users.GET("", middleware.AdminMiddleware(), controllers.UserList)
+				users.GET("/:id", middleware.UserOwnershipMiddleware(), controllers.UserGet)
+				users.PUT("/:id", middleware.UserOwnershipMiddleware(), controllers.UserUpdate)
+				users.DELETE("/:id", middleware.AdminMiddleware(), controllers.UserDelete)
+			}
+		}
 	}
 
 	port := os.Getenv("PORT")

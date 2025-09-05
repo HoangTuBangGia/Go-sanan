@@ -3,16 +3,20 @@ package controllers
 import (
 	"gin-database-connect/initializers"
 	"gin-database-connect/models"
+	"gin-database-connect/utils"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type CreateUserRequest struct {
 	Name     string  `json:"name" binding:"required,min=3"`
 	Email    string  `json:"email" binding:"required,email"`
+	Password string  `json:"password" binding:"required,min=6"`
+	Role     *string `json:"role"`
 	Birthday *string `json:"birthday"`
 	Phone    *string `json:"phone"`
 	IsActive *bool   `json:"is_active"`
@@ -20,23 +24,15 @@ type CreateUserRequest struct {
 
 type UpdateUserRequest struct {
 	Name     *string `json:"name" binding:"omitempty,min=3"`
+	Password *string `json:"password" binding:"omitempty,min=6"`
+	Role     *string `json:"role"`
 	Birthday *string `json:"birthday"`
 	Phone    *string `json:"phone"`
 	IsActive *bool   `json:"is_active"`
 }
 
 func parseBirthday(s *string) *time.Time {
-	if s == nil || *s == "" {
-		return nil
-	}
-
-	t, err := time.Parse("2006-01-02", *s)
-
-	if err != nil {
-		return nil
-	}
-
-	return &t
+	return utils.ParseBirthday(s)
 }
 
 func UserCreate(c *gin.Context) {
@@ -47,11 +43,35 @@ func UserCreate(c *gin.Context) {
 		return
 	}
 
+	var existingUser models.User
+	if err := initializers.DB.Where("email = ?", body.Email).First(&existingUser).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email already exists"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
 	user := models.User{
 		Name:     body.Name,
 		Email:    body.Email,
+		Password: string(hashedPassword),
+		Role:     models.RegularUserRole,
 		Birthday: parseBirthday(body.Birthday),
 		Phone:    body.Phone,
+	}
+
+	if body.Role != nil {
+		if currentUser, exists := c.Get("user"); exists {
+			if currentUser.(*models.User).Role == models.AdminRole {
+				if *body.Role == "admin" {
+					user.Role = models.AdminRole
+				}
+			}
+		}
 	}
 
 	if body.IsActive != nil {
@@ -107,6 +127,28 @@ func UserUpdate(c *gin.Context) {
 
 	if body.Name != nil {
 		user.Name = *body.Name
+	}
+
+	if body.Password != nil {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*body.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		user.Password = string(hashedPassword)
+	}
+
+	if body.Role != nil {
+		if currentUser, exists := c.Get("user"); exists {
+			if currentUser.(*models.User).Role == models.AdminRole {
+				switch *body.Role {
+				case "admin":
+					user.Role = models.AdminRole
+				case "user":
+					user.Role = models.RegularUserRole
+				}
+			}
+		}
 	}
 
 	if body.Birthday != nil {

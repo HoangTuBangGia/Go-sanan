@@ -36,5 +36,5 @@ func ConnectDatabase() {
 }
 
 func AutoMigrate() error {
-	return DB.AutoMigrate(&models.User{})
+	return DB.AutoMigrate(&models.User{}, &models.RefreshToken{})
 }
