@@ -25,13 +25,13 @@ func main() {
 			auth.POST("/login", controllers.Login)
 			auth.POST("/refresh", controllers.Refresh)
 			auth.POST("/logout", controllers.Logout)
-			auth.POST("/logoutall", controllers.LogoutAllDevices)
 		}
 
 		protected := v1.Group("/")
 		protected.Use(middleware.AuthMiddleware())
 		{
 			protected.GET("/profile", controllers.GetProfile)
+			protected.POST("/logout-all-devices", controllers.LogoutAllDevices)
 
 			users := protected.Group("/users")
 			{
